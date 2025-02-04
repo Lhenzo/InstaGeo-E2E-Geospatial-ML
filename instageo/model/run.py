@@ -45,6 +45,7 @@ from instageo.model.dataloader import (
 )
 from instageo.model.infer_utils import chip_inference, sliding_window_inference
 from instageo.model.model import PrithviSeg
+from torchmetrics.classification import MulticlassAUROC
 
 pl.seed_everything(seed=1042, workers=True)
 torch.backends.cudnn.deterministic = True
@@ -327,6 +328,14 @@ class PrithviSegmentationModule(pl.LightningModule):
             prog_bar=True,
             logger=True,
         )
+        self.log(
+            f"{stage}_mROC_AUC",
+            out["mean_roc_auc"],
+            on_step=True,
+            on_epoch=True,
+            prog_bar=True,
+            logger=True,
+        )
         for idx, value in enumerate(out["iou_per_class"]):
             self.log(
                 f"{stage}_IoU_{idx}",
@@ -366,71 +375,90 @@ class PrithviSegmentationModule(pl.LightningModule):
 
     def compute_metrics(
         self, pred_mask: torch.Tensor, gt_mask: torch.Tensor
-    ) -> dict[str, List[float]]:
-        """Calculate the Intersection over Union (IoU), Accuracy, Precision and Recall metrics.
-
+    ) -> dict[str, list[float]]:
+        """Calculate IoU, Accuracy, Precision, Recall, and ROC-AUC metrics.
+    
         Args:
-            pred_mask (np.array): Predicted segmentation mask.
-            gt_mask (np.array): Ground truth segmentation mask.
-
+            pred_mask (torch.Tensor): Predicted segmentation mask (logits or probabilities).
+            gt_mask (torch.Tensor): Ground truth segmentation mask.
+    
         Returns:
-            dict: A dictionary containing 'iou', 'overall_accuracy', and
-                'accuracy_per_class', 'precision_per_class' and 'recall_per_class'.
+            dict: A dictionary containing IoU, Accuracy, Precision, Recall, and ROC-AUC per class.
         """
-        pred_mask = torch.argmax(pred_mask, dim=1)
+        # Convert logits to class predictions
+        pred_class = torch.argmax(pred_mask, dim=1) if pred_mask.dim() == 4 else (pred_mask > 0.5).long()
+    
+        # Remove ignored pixels
         no_ignore = gt_mask.ne(self.ignore_index).to(self.device)
-        pred_mask = pred_mask.masked_select(no_ignore).cpu().numpy()
+        pred_class = pred_class.masked_select(no_ignore).cpu().numpy()
         gt_mask = gt_mask.masked_select(no_ignore).cpu().numpy()
-        classes = np.unique(np.concatenate((gt_mask, pred_mask)))
-
+    
+        # Mask pred_mask to exclude ignored pixels
+        pred_mask = pred_mask.masked_select(no_ignore.unsqueeze(1)).view(-1, pred_mask.shape[1]).cpu()
+    
+        classes = np.unique(np.concatenate((gt_mask, pred_class)))
+    
         iou_per_class = []
         accuracy_per_class = []
         precision_per_class = []
         recall_per_class = []
-
+    
+        # Compute ROC-AUC for all classes using MulticlassAUROC
+        metric = MulticlassAUROC(num_classes=len(classes), average="macro", thresholds=None)
+    
+        # Ensure pred_mask and gt_mask are on the same device
+        gt_mask_tensor = torch.tensor(gt_mask, dtype=torch.long).to(self.device)
+        mean_roc_auc = metric(pred_mask.to(self.device), gt_mask_tensor).item()
+    
         for clas in classes:
-            pred_cls = pred_mask == clas
+            pred_cls = pred_class == clas
             gt_cls = gt_mask == clas
-
+    
             intersection = np.logical_and(pred_cls, gt_cls)
             union = np.logical_or(pred_cls, gt_cls)
             true_positive = np.sum(intersection)
             false_positive = np.sum(pred_cls) - true_positive
             false_negative = np.sum(gt_cls) - true_positive
-
+    
             if np.any(union):
                 iou = np.sum(intersection) / np.sum(union)
                 iou_per_class.append(iou)
-
+    
             accuracy = true_positive / np.sum(gt_cls) if np.sum(gt_cls) > 0 else 0
             accuracy_per_class.append(accuracy)
-
+    
             precision = (
                 true_positive / (true_positive + false_positive)
                 if (true_positive + false_positive) > 0
                 else 0
             )
             precision_per_class.append(precision)
-
+    
             recall = (
                 true_positive / (true_positive + false_negative)
                 if (true_positive + false_negative) > 0
                 else 0
             )
             recall_per_class.append(recall)
-
-        # Overall IoU and accuracy
-        mean_iou = np.mean(iou_per_class) if iou_per_class else 0.0
-        overall_accuracy = np.sum(pred_mask == gt_mask) / gt_mask.size
-
+    
+        # Avoid "Mean of empty slice" warning
+        iou_per_class = np.array(iou_per_class)
+        iou_per_class = iou_per_class[~np.isnan(iou_per_class)]  # Remove NaNs before mean
+        mean_iou = np.nanmean(iou_per_class) if len(iou_per_class) > 0 else 0.0
+    
+        overall_accuracy = np.sum(pred_class == gt_mask) / gt_mask.size
+    
         return {
             "iou": mean_iou,
             "acc": overall_accuracy,
             "acc_per_class": accuracy_per_class,
-            "iou_per_class": iou_per_class,
+            "iou_per_class": iou_per_class.tolist(),
             "precision_per_class": precision_per_class,
             "recall_per_class": recall_per_class,
+            "mean_roc_auc": mean_roc_auc,
         }
+
+
 
 
 def compute_mean_std(data_loader: DataLoader) -> Tuple[List[float], List[float]]:
@@ -514,7 +542,7 @@ def main(cfg: DictConfig) -> None:
             train_dataset,
             batch_size=batch_size,
             shuffle=True,
-            num_workers=1,
+            num_workers=3,
         )
         mean, std = compute_mean_std(train_loader)
         print(mean)
@@ -557,10 +585,10 @@ def main(cfg: DictConfig) -> None:
             constant_multiplier=cfg.dataloader.constant_multiplier,
         )
         train_loader = create_dataloader(
-            train_dataset, batch_size=batch_size, shuffle=True, num_workers=1
+            train_dataset, batch_size=batch_size, shuffle=True, num_workers=3
         )
         valid_loader = create_dataloader(
-            valid_dataset, batch_size=batch_size, shuffle=False, num_workers=1
+            valid_dataset, batch_size=batch_size, shuffle=False, num_workers=3
         )
         model = PrithviSegmentationModule(
             image_size=IM_SIZE,
@@ -574,9 +602,9 @@ def main(cfg: DictConfig) -> None:
         )
         hydra_out_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
         checkpoint_callback = ModelCheckpoint(
-            monitor="val_mIoU",
+            monitor="val_mROC_AUC",
             dirpath=hydra_out_dir,
-            filename="instageo_best_checkpoint",
+            filename="instageo_epoch-{epoch:02d}-val_roc_auc-{val_mROC_AUC:.2f}",
             auto_insert_metric_name=False,
             mode="max",
             save_top_k=1,
