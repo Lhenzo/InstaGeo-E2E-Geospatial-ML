@@ -121,14 +121,17 @@ def normalize_and_convert_to_tensor(
         images and label.
     """
     norm = transforms.Normalize(mean, std)
-    ims_tensor = torch.stack([transforms.ToTensor()(im).squeeze() for im in ims])
+    ims_tensor = torch.stack([transforms.ToTensor()(im).squeeze() for im in ims]).float()
     _, h, w = ims_tensor.shape
     ims_tensor = ims_tensor.reshape([temporal_size, -1, h, w])  # T*C,H,W -> T,C,H,W
+    mask = (ims_tensor == -9999).all(dim=1).any(dim=0)
     ims_tensor = torch.stack([norm(im) for im in ims_tensor]).permute(
         [1, 0, 2, 3]
     )  # T,C,H,W -> C,T,H,W
     if label:
-        label = torch.from_numpy(np.array(label)).squeeze()
+        label_arr = np.array(label)
+        label_arr[mask] = -1
+        label = torch.from_numpy(label_arr).squeeze()
     return ims_tensor, label
 
 
