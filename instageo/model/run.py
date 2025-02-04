@@ -542,7 +542,7 @@ def main(cfg: DictConfig) -> None:
             train_dataset,
             batch_size=batch_size,
             shuffle=True,
-            num_workers=3,
+            num_workers=1,
         )
         mean, std = compute_mean_std(train_loader)
         print(mean)
@@ -585,10 +585,10 @@ def main(cfg: DictConfig) -> None:
             constant_multiplier=cfg.dataloader.constant_multiplier,
         )
         train_loader = create_dataloader(
-            train_dataset, batch_size=batch_size, shuffle=True, num_workers=3
+            train_dataset, batch_size=batch_size, shuffle=True, num_workers=1
         )
         valid_loader = create_dataloader(
-            valid_dataset, batch_size=batch_size, shuffle=False, num_workers=3
+            valid_dataset, batch_size=batch_size, shuffle=False, num_workers=1
         )
         model = PrithviSegmentationModule(
             image_size=IM_SIZE,
