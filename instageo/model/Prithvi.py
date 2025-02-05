@@ -27,7 +27,7 @@ import torch
 import torch.nn as nn
 from timm.models.layers import to_2tuple
 from timm.models.vision_transformer import Block
-
+from copy import deepcopy
 
 def get_1d_sincos_pos_embed_from_grid(embed_dim: int, pos: np.ndarray) -> np.ndarray:
     """Generates a 1D sinusoidal position embedding from a list of positions.
@@ -305,6 +305,7 @@ class ViTEncoder(nn.Module):
             Tuple[torch.Tensor, torch.Tensor, torch.Tensor]: The encoded tensor, the
                 binary mask, and the indices to restore the original order.
         """
+        hidden_states = []
         # embed patches
         x = self.patch_embed(x)
 
@@ -319,5 +320,6 @@ class ViTEncoder(nn.Module):
         # apply Transformer blocks
         for blk in self.blocks:
             x = blk(x)
+            hidden_states.append(deepcopy(x))
         x = self.norm(x)
-        return x
+        return x, hidden_states

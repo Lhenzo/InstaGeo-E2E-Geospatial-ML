@@ -217,6 +217,16 @@ class PrithviSeg(nn.Module):
                 kernel_size=1, in_channels=embed_dims[-1], out_channels=num_classes
             ),
         )
+        self.prediction_head =  nn.Conv2d(kernel_size=1, in_channels=10, out_channels=num_classes)
+    def prepare_prithvi_100M_backbone(self, features):
+        reshaped_features = features[:, 1:, :]
+        feature_img_side_length = int(
+            np.sqrt(reshaped_features.shape[1] // self.model_args["num_frames"])
+        )
+        reshaped_features = reshaped_features.permute(0, 2, 1).reshape(
+            features.shape[0], -1, feature_img_side_length, feature_img_side_length
+        )
+        return reshaped_features
 
     def forward(self, img: torch.Tensor) -> torch.Tensor:
         """Define the forward pass of the model.
@@ -227,15 +237,14 @@ class PrithviSeg(nn.Module):
         Returns:
             torch.Tensor: Output tensor after image segmentation.
         """
-        features = self.prithvi_100M_backbone(img)
+        features, hidden_state = self.prithvi_100M_backbone(img)
         # drop cls token
-        reshaped_features = features[:, 1:, :]
-        feature_img_side_length = int(
-            np.sqrt(reshaped_features.shape[1] // self.model_args["num_frames"])
-        )
-        reshaped_features = reshaped_features.permute(0, 2, 1).reshape(
-            features.shape[0], -1, feature_img_side_length, feature_img_side_length
-        )
-
-        out = self.segmentation_head(reshaped_features)
+        # print([x.shape for x in self.prithvi_100M_backbone.hidden_states])
+        # print(len(self.prithvi_100M_backbone.hidden_states))
+        outs = [
+            self.segmentation_head(self.prepare_prithvi_100M_backbone(reshaped_features))
+            for reshaped_features in hidden_state[0:-1:3] + [features]
+        ]
+        cat_outs = torch.cat(outs, dim=1)
+        out = self.prediction_head(cat_outs)
         return out

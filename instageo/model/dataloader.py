@@ -33,6 +33,7 @@ from absl import logging
 from PIL import Image
 from rasterio.crs import CRS
 from torchvision import transforms
+import torchvision
 
 
 def open_mf_tiff_dataset(
@@ -96,7 +97,12 @@ def random_crop_and_flip(
     if random.random() > 0.5:
         ims = [transforms.functional.vflip(im) for im in ims]
         label = transforms.functional.vflip(label)
-
+    
+    if random.random() > 0.5:
+        ims = [torchvision.transforms.GaussianBlur(kernel_size=5, sigma=(0.1, 2.0))(im) for im in ims]
+    # if random.random() > 0.5:
+    #     print(ims[0].shape)
+    #     ims = [torchvision.transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.2)(im) for im in ims]
     return ims, label
 
 
