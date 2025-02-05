@@ -1,0 +1,66 @@
+checkpoint_path: null
+dataloader:
+  bands:
+  - 0
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+  - 8
+  - 9
+  - 10
+  - 11
+  - 12
+  - 13
+  - 14
+  - 15
+  - 16
+  - 17
+  constant_multiplier: 1.0
+  img_size: 256
+  mean:
+  - 1284.959228515625
+  - 1805.0888671875
+  - 2381.90673828125
+  - 2967.456787109375
+  - 3730.630615234375
+  - 3407.238525390625
+  no_data_value: -9999
+  reduce_to_zero: false
+  replace_label:
+  - -9999
+  - -1
+  std:
+  - 516.8418579101562
+  - 669.2651977539062
+  - 865.1688232421875
+  - 1024.60498046875
+  - 1272.7333984375
+  - 1182.0455322265625
+  temporal_dim: 3
+mode: train
+model:
+  freeze_backbone: false
+  num_classes: 2
+output_dir: null
+root_dir: null
+test:
+  crop_size: 256
+  img_size: 256
+  mask_cloud: false
+  stride: 256
+test_filepath: null
+train:
+  batch_size: 8
+  class_weights:
+  - 0.8
+  - 1.2
+  ignore_index: -1
+  learning_rate: 0.0003
+  num_epochs: 20
+  weight_decay: 0.1
+train_filepath: null
+valid_filepath: null

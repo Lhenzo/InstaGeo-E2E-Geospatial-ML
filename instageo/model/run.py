@@ -47,7 +47,7 @@ from instageo.model.infer_utils import chip_inference, sliding_window_inference
 from instageo.model.model import PrithviSeg
 from torchmetrics.classification import MulticlassAUROC
 
-pl.seed_everything(seed=1042, workers=True)
+pl.seed_everything(seed=2025, workers=True)
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 

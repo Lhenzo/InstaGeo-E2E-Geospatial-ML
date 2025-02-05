@@ -449,7 +449,10 @@ class InstaGeoDataset(torch.utils.data.Dataset):
         era5_stds = np.array([8.002596254833781, 5.228112536298907, 6.03299636944352, 5.906463965578157, 5.359933375494518, 4.528051711086457, 3.981484030485847, 0.0009905732500757915])
         cols = ['d2m', 't2m', 'skt', 'stl1', 'stl2', 'stl3', 'stl4', 'tp']
         df_era5[cols] = df_era5[cols].fillna(dict(zip(cols, era5_means)))
-        era5_vals = (df_era5[df_era5.chip==era5_key][cols].values[0] - era5_means)/era5_stds
+        try:
+            era5_vals = (df_era5[df_era5.chip==era5_key][cols].values[0] - era5_means)/era5_stds
+        except:
+            era5_vals = np.array([0, 0, 0, 0, 0, 0, 0, 0])
         x_tensor, y_tensor = self.preprocess_func(arr_x, arr_y)
         if self.include_filenames:
             # Return 4 items: x, era5_vals, y, and filename
