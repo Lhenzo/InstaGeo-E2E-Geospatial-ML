@@ -97,6 +97,9 @@ def random_crop_and_flip(
         ims = [transforms.functional.vflip(im) for im in ims]
         label = transforms.functional.vflip(label)
 
+    if random.random() > 0.5:
+        ims = [transforms.GaussianBlur(kernel_size=5, sigma=(0.1, 2.0))(im) for im in ims]
+
     return ims, label
 
 
