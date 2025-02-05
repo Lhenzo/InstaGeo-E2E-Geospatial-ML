@@ -105,6 +105,7 @@ def normalize_and_convert_to_tensor(
     label: Image.Image | None,
     mean: List[float],
     std: List[float],
+    is_train: bool,
     temporal_size: int = 1,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """Normalize the images and label and convert them to PyTorch tensors.
@@ -130,7 +131,8 @@ def normalize_and_convert_to_tensor(
     )  # T,C,H,W -> C,T,H,W
     if label:
         label_arr = np.array(label)
-        label_arr[mask] = -1
+        if is_train:
+            label_arr[mask] = -1
         label = torch.from_numpy(label_arr).squeeze()
     return ims_tensor, label
 
@@ -140,6 +142,7 @@ def process_and_augment(
     y: np.ndarray | None,
     mean: List[float],
     std: List[float],
+    is_train: bool,
     temporal_size: int = 1,
     im_size: int = 224,
     augment: bool = True,
@@ -166,7 +169,7 @@ def process_and_augment(
         label = Image.fromarray(y.copy().squeeze())
     if augment:
         ims, label = random_crop_and_flip(ims, label, im_size)
-    ims, label = normalize_and_convert_to_tensor(ims, label, mean, std, temporal_size)
+    ims, label = normalize_and_convert_to_tensor(ims, label, mean, std, is_train, temporal_size)
     return ims, label
 
 
@@ -234,6 +237,7 @@ def process_test(
         process_and_augment,
         mean=mean,
         std=std,
+        is_train=False,
         temporal_size=temporal_size,
         augment=False,
     )

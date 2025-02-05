@@ -404,11 +404,18 @@ class PrithviSegmentationModule(pl.LightningModule):
         recall_per_class = []
     
         # Compute ROC-AUC for all classes using MulticlassAUROC
-        metric = MulticlassAUROC(num_classes=len(classes), average="macro", thresholds=None)
+        try:
+            metric = MulticlassAUROC(num_classes=len(classes), average="macro", thresholds=None)
+            # Ensure pred_mask and gt_mask are on the same device
+            gt_mask_tensor = torch.tensor(gt_mask, dtype=torch.long).to(self.device)
+            mean_roc_auc = metric(pred_mask.to(self.device), gt_mask_tensor).item()
+        except:
+            print(f"Len classes {len(classes)}")
+            # np.save("/home/jupyter/repos/InstaGeo-E2E-Geospatial-ML/outputs/frozen_backbone/pred_mask.npy", pred_mask)
+            # np.save("/home/jupyter/repos/InstaGeo-E2E-Geospatial-ML/outputs/frozen_backbone/gt_mask.npy", gt_mask)
+            mean_roc_auc=0
     
-        # Ensure pred_mask and gt_mask are on the same device
-        gt_mask_tensor = torch.tensor(gt_mask, dtype=torch.long).to(self.device)
-        mean_roc_auc = metric(pred_mask.to(self.device), gt_mask_tensor).item()
+
     
         for clas in classes:
             pred_cls = pred_class == clas
@@ -529,6 +536,7 @@ def main(cfg: DictConfig) -> None:
                 process_and_augment,
                 mean=[0] * len(MEAN),
                 std=[1] * len(STD),
+                is_train=False,
                 temporal_size=TEMPORAL_SIZE,
                 im_size=IM_SIZE,
             ),
@@ -558,6 +566,7 @@ def main(cfg: DictConfig) -> None:
                 process_and_augment,
                 mean=MEAN,
                 std=STD,
+                is_train=True,
                 temporal_size=TEMPORAL_SIZE,
                 im_size=IM_SIZE,
             ),
@@ -575,6 +584,7 @@ def main(cfg: DictConfig) -> None:
                 process_and_augment,
                 mean=MEAN,
                 std=STD,
+                is_train=False,
                 temporal_size=TEMPORAL_SIZE,
                 im_size=IM_SIZE,
             ),
@@ -607,7 +617,7 @@ def main(cfg: DictConfig) -> None:
             filename="instageo_epoch-{epoch:02d}-val_roc_auc-{val_mROC_AUC:.2f}",
             auto_insert_metric_name=False,
             mode="max",
-            save_top_k=1,
+            save_top_k=3,
         )
 
         logger = TensorBoardLogger(hydra_out_dir, name="instageo")
@@ -745,6 +755,7 @@ def main(cfg: DictConfig) -> None:
                 process_and_augment,
                 mean=MEAN,
                 std=STD,
+                is_train=False,
                 temporal_size=TEMPORAL_SIZE,
                 im_size=cfg.test.img_size,
                 augment=False,
