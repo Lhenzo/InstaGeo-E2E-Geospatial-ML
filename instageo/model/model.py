@@ -217,7 +217,7 @@ class PrithviSeg(nn.Module):
                 kernel_size=1, in_channels=embed_dims[-1], out_channels=num_classes
             ),
         )
-        self.prediction_head =  nn.Conv2d(kernel_size=1, in_channels=10, out_channels=num_classes)
+        self.prediction_head =  nn.Conv2d(kernel_size=1, in_channels=8, out_channels=num_classes)
     def prepare_prithvi_100M_backbone(self, features):
         reshaped_features = features[:, 1:, :]
         feature_img_side_length = int(
@@ -243,7 +243,7 @@ class PrithviSeg(nn.Module):
         # print(len(self.prithvi_100M_backbone.hidden_states))
         outs = [
             self.segmentation_head(self.prepare_prithvi_100M_backbone(reshaped_features))
-            for reshaped_features in hidden_state[0:-1:3] + [features]
+            for reshaped_features in hidden_state[0:-1:4] + [features]
         ]
         cat_outs = torch.cat(outs, dim=1)
         out = self.prediction_head(cat_outs)
