@@ -557,10 +557,10 @@ def main(cfg: DictConfig) -> None:
             constant_multiplier=cfg.dataloader.constant_multiplier,
         )
         train_loader = create_dataloader(
-            train_dataset, batch_size=batch_size, shuffle=True, num_workers=10
+            train_dataset, batch_size=batch_size, shuffle=True, num_workers=4
         )
         valid_loader = create_dataloader(
-            valid_dataset, batch_size=batch_size, shuffle=False, num_workers=10
+            valid_dataset, batch_size=batch_size, shuffle=False, num_workers=4
         )
         model = PrithviSegmentationModule(
             image_size=IM_SIZE,
