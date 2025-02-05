@@ -31,7 +31,7 @@ import yaml  # type: ignore
 from absl import logging
 
 from instageo.model.Prithvi import ViTEncoder
-
+from instageo.model.unet import Upscaler
 
 def download_file(url: str, filename: str | Path, retries: int = 3) -> None:
     """Downloads a file from the given URL and saves it to a local file.
@@ -212,7 +212,8 @@ class PrithviSeg(nn.Module):
             for i in range(5)
         ]
         self.segmentation_head = nn.Sequential(
-            *[upscaling_block(embed_dims[i], embed_dims[i + 1]) for i in range(4)],
+            # *[upscaling_block(embed_dims[i], embed_dims[i + 1]) for i in range(4)],
+            *[Upscaler(embed_dims[i], embed_dims[i + 1]) for i in range(4)],
             nn.Conv2d(
                 kernel_size=1, in_channels=embed_dims[-1], out_channels=num_classes
             ),
