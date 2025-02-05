@@ -32,7 +32,9 @@ import xarray as xr
 from absl import logging
 from PIL import Image
 from rasterio.crs import CRS
+import torchvision.transforms.functional as F
 from torchvision import transforms
+from torchvision.transforms import InterpolationMode
 
 
 def open_mf_tiff_dataset(
@@ -72,32 +74,44 @@ def open_mf_tiff_dataset(
 
 
 def random_crop_and_flip(
-    ims: List[Image.Image], label: Image.Image, im_size: int
+    ims: List[Image.Image], label: Image.Image, im_size: int, distortion_scale: float = 0.5
 ) -> Tuple[List[Image.Image], Image.Image]:
-    """Apply random cropping and flipping transformations to the given images and label.
-
-    Args:
-        ims (List[Image.Image]): List of PIL Image objects representing the images.
-        label (Image.Image): A PIL Image object representing the label.
-
-    Returns:
-        Tuple[List[Image.Image], Image.Image]: A tuple containing the transformed list of
-        images and label.
-    """
+    # 1) Random Crop
     i, j, h, w = transforms.RandomCrop.get_params(ims[0], (im_size, im_size))
+    ims = [F.crop(im, i, j, h, w) for im in ims]
+    label = F.crop(label, i, j, h, w)
 
-    ims = [transforms.functional.crop(im, i, j, h, w) for im in ims]
-    label = transforms.functional.crop(label, i, j, h, w)
-
+    # 2) Random horizontal flip
     if random.random() > 0.5:
-        ims = [transforms.functional.hflip(im) for im in ims]
-        label = transforms.functional.hflip(label)
+        ims = [F.hflip(im) for im in ims]
+        label = F.hflip(label)
 
+    # 3) Random vertical flip
     if random.random() > 0.5:
-        ims = [transforms.functional.vflip(im) for im in ims]
-        label = transforms.functional.vflip(label)
+        ims = [F.vflip(im) for im in ims]
+        label = F.vflip(label)
+
+    # 4) Random 90-degree rotation
+    #    We'll pick k in {0,1,2,3}, then rotate by k*90 degrees
+    k = random.choice([0, 1, 2, 3])  # 25% chance each
+    angle = 90 * k
+    if angle != 0:
+        ims = [
+            F.rotate(
+                im, angle,
+                interpolation=InterpolationMode.BILINEAR,  # better for images
+                expand=False  # keep same image size
+            )
+            for im in ims
+        ]
+        label = F.rotate(
+            label, angle,
+            interpolation=InterpolationMode.NEAREST,     # preserve class IDs
+            expand=False
+        )
 
     return ims, label
+
 
 
 def normalize_and_convert_to_tensor(
@@ -380,6 +394,7 @@ class InstaGeoDataset(torch.utils.data.Dataset):
         replace_label: Tuple,
         reduce_to_zero: bool,
         constant_multiplier: float,
+        era5_dataset: str,
         bands: List[int] | None = None,
         include_filenames: bool = False,
     ):
@@ -406,6 +421,7 @@ class InstaGeoDataset(torch.utils.data.Dataset):
         self.reduce_to_zero = reduce_to_zero
         self.constant_multiplier = constant_multiplier
         self.include_filenames = include_filenames
+        self.era5_dataset = era5_dataset
 
     def __getitem__(self, i: int) -> Tuple[torch.Tensor, torch.Tensor]:
         """Retrieves a sample from dataset.
@@ -427,10 +443,22 @@ class InstaGeoDataset(torch.utils.data.Dataset):
             bands=self.bands,
             constant_multiplier=self.constant_multiplier,
         )
+        era5_key = self.file_paths[i][0].split('/')[-1]
+        df_era5 = pd.read_csv(self.era5_dataset)
+        era5_means = np.array([286.08611869661945, 301.064863593629, 304.12785670102625, 304.21040517715466, 304.06025074224226, 303.88906940487215, 303.33401762679466, 0.0005629586149506063])
+        era5_stds = np.array([8.002596254833781, 5.228112536298907, 6.03299636944352, 5.906463965578157, 5.359933375494518, 4.528051711086457, 3.981484030485847, 0.0009905732500757915])
+        cols = ['d2m', 't2m', 'skt', 'stl1', 'stl2', 'stl3', 'stl4', 'tp']
+        df_era5[cols] = df_era5[cols].fillna(dict(zip(cols, era5_means)))
+        era5_vals = (df_era5[df_era5.chip==era5_key][cols].values[0] - era5_means)/era5_stds
+        x_tensor, y_tensor = self.preprocess_func(arr_x, arr_y)
         if self.include_filenames:
-            return self.preprocess_func(arr_x, arr_y), im_fname
+            # Return 4 items: x, era5_vals, y, and filename
+            return x_tensor, era5_vals, y_tensor, im_fname
         else:
-            return self.preprocess_func(arr_x, arr_y)
+            # Return 3 items: x, era5_vals, y
+            return x_tensor, era5_vals, y_tensor
+
+        
 
     def __len__(self) -> int:
         """Return length of dataset."""

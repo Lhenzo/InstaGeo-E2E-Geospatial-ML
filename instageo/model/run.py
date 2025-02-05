@@ -194,7 +194,7 @@ class PrithviSegmentationModule(pl.LightningModule):
         self.ignore_index = ignore_index
         self.weight_decay = weight_decay
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, era5_vals) -> torch.Tensor:
         """Define the forward pass of the model.
 
         Args:
@@ -203,7 +203,7 @@ class PrithviSegmentationModule(pl.LightningModule):
         Returns:
             torch.Tensor: Output tensor from the model.
         """
-        return self.net(x)
+        return self.net(x, era5_vals)
 
     def training_step(self, batch: Any, batch_idx: int) -> torch.Tensor:
         """Perform a training step.
@@ -215,8 +215,8 @@ class PrithviSegmentationModule(pl.LightningModule):
         Returns:
             torch.Tensor: The loss value for the batch.
         """
-        inputs, labels = batch
-        outputs = self.forward(inputs)
+        inputs, era5_vals, labels = batch
+        outputs = self.forward(inputs, era5_vals)
         loss = self.criterion(outputs, labels.long())
         self.log_metrics(outputs, labels, "train", loss)
         return loss
@@ -231,8 +231,8 @@ class PrithviSegmentationModule(pl.LightningModule):
         Returns:
             torch.Tensor: The loss value for the batch.
         """
-        inputs, labels = batch
-        outputs = self.forward(inputs)
+        inputs, era5_vals, labels = batch
+        outputs = self.forward(inputs, era5_vals)
         loss = self.criterion(outputs, labels.long())
         self.log_metrics(outputs, labels, "val", loss)
         return loss
@@ -247,8 +247,8 @@ class PrithviSegmentationModule(pl.LightningModule):
         Returns:
             torch.Tensor: The loss value for the batch.
         """
-        inputs, labels = batch
-        outputs = self.forward(inputs)
+        inputs, era5_vals, labels, filename = batch
+        outputs = self.forward(inputs, era5_vals)
         loss = self.criterion(outputs, labels.long())
         self.log_metrics(outputs, labels, "test", loss)
         return loss
@@ -545,6 +545,7 @@ def main(cfg: DictConfig) -> None:
             reduce_to_zero=cfg.dataloader.reduce_to_zero,
             no_data_value=cfg.dataloader.no_data_value,
             constant_multiplier=cfg.dataloader.constant_multiplier,
+            era5_dataset="/home/jupyter/repos/InstaGeo-E2E-Geospatial-ML/hackathon-data/era5_train.csv"
         )
         train_loader = create_dataloader(
             train_dataset,
@@ -575,6 +576,7 @@ def main(cfg: DictConfig) -> None:
             reduce_to_zero=cfg.dataloader.reduce_to_zero,
             no_data_value=cfg.dataloader.no_data_value,
             constant_multiplier=cfg.dataloader.constant_multiplier,
+            era5_dataset="/home/jupyter/repos/InstaGeo-E2E-Geospatial-ML/hackathon-data/era5_train.csv"
         )
 
         valid_dataset = InstaGeoDataset(
@@ -593,6 +595,7 @@ def main(cfg: DictConfig) -> None:
             reduce_to_zero=cfg.dataloader.reduce_to_zero,
             no_data_value=cfg.dataloader.no_data_value,
             constant_multiplier=cfg.dataloader.constant_multiplier,
+            era5_dataset="/home/jupyter/repos/InstaGeo-E2E-Geospatial-ML/hackathon-data/era5_train.csv"
         )
         train_loader = create_dataloader(
             train_dataset, batch_size=batch_size, shuffle=True, num_workers=1
@@ -626,6 +629,7 @@ def main(cfg: DictConfig) -> None:
             accelerator=get_device(),
             max_epochs=cfg.train.num_epochs,
             callbacks=[checkpoint_callback],
+            precision='16-mixed',
             logger=logger,
         )
 
@@ -645,6 +649,7 @@ def main(cfg: DictConfig) -> None:
                 img_size=cfg.test.img_size,
                 crop_size=cfg.test.crop_size,
                 stride=cfg.test.stride,
+                era5_dataset="/home/jupyter/repos/InstaGeo-E2E-Geospatial-ML/hackathon-data/era5_train.csv"
             ),
             bands=BANDS,
             replace_label=cfg.dataloader.replace_label,
@@ -667,7 +672,7 @@ def main(cfg: DictConfig) -> None:
             ignore_index=cfg.train.ignore_index,
             weight_decay=cfg.train.weight_decay,
         )
-        trainer = pl.Trainer(accelerator=get_device())
+        trainer = pl.Trainer(accelerator=get_device(),precision='16-mixed')
         result = trainer.test(model, dataloaders=test_loader)
         log.info(f"Evaluation results:\n{result}")
 
@@ -765,6 +770,7 @@ def main(cfg: DictConfig) -> None:
             reduce_to_zero=cfg.dataloader.reduce_to_zero,
             no_data_value=cfg.dataloader.no_data_value,
             constant_multiplier=cfg.dataloader.constant_multiplier,
+            era5_dataset="/home/jupyter/repos/InstaGeo-E2E-Geospatial-ML/hackathon-data/era5_test.csv",
             include_filenames=True,
         )
         test_loader = create_dataloader(

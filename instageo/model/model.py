@@ -178,6 +178,11 @@ class PrithviSeg(nn.Module):
 
         self.prithvi_100M_backbone = model
 
+        self.era5_proj = nn.Sequential(
+            nn.Linear(8, 2304),
+            nn.ReLU(),
+        )
+
         def upscaling_block(in_channels: int, out_channels: int) -> nn.Module:
             """Upscaling block.
 
@@ -207,10 +212,11 @@ class PrithviSeg(nn.Module):
                 nn.ReLU(),
             )
 
-        embed_dims = [
-            (model_args["embed_dim"] * model_args["num_frames"]) // (2**i)
-            for i in range(5)
-        ]
+        # embed_dims = [
+        #     (model_args["embed_dim"] * model_args["num_frames"]) // (2**i)
+        #     for i in range(5)
+        # ]
+        embed_dims = [4608, 1152, 576, 288, 144]
         self.segmentation_head = nn.Sequential(
             *[upscaling_block(embed_dims[i], embed_dims[i + 1]) for i in range(4)],
             nn.Conv2d(
@@ -218,7 +224,7 @@ class PrithviSeg(nn.Module):
             ),
         )
 
-    def forward(self, img: torch.Tensor) -> torch.Tensor:
+    def forward(self, img: torch.Tensor, era5_vals: torch.Tensor) -> torch.Tensor:
         """Define the forward pass of the model.
 
         Args:
@@ -228,6 +234,11 @@ class PrithviSeg(nn.Module):
             torch.Tensor: Output tensor after image segmentation.
         """
         features = self.prithvi_100M_backbone(img)
+
+        era5_vals = era5_vals.to(img.dtype)
+        era5_vals = era5_vals.to(img.device)
+        era5_embed = self.era5_proj(era5_vals)               # (B, 2304)
+        era5_embed = era5_embed.unsqueeze(-1).unsqueeze(-1) 
         # drop cls token
         reshaped_features = features[:, 1:, :]
         feature_img_side_length = int(
@@ -237,5 +248,8 @@ class PrithviSeg(nn.Module):
             features.shape[0], -1, feature_img_side_length, feature_img_side_length
         )
 
-        out = self.segmentation_head(reshaped_features)
+        era5_broadcasted = era5_embed.expand(-1, -1, 16, 16)  # (B, 2304, 16, 16)
+        merged_features = torch.cat([reshaped_features, era5_broadcasted], dim=1)
+        out = self.segmentation_head(merged_features)
+
         return out
