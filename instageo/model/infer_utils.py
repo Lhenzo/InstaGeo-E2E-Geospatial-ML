@@ -145,9 +145,10 @@ def chip_inference(
 
     with torch.no_grad():
         with ThreadPoolExecutor(max_workers=num_workers) as executor:
-            for (data, _), file_names in tqdm(dataloader, desc="Running Inference"):
+            for (data, era5_info, labels), file_names in tqdm(dataloader, desc="Running Inference"):
                 data = data.to(device)
-                prediction_batch = model(data)
+
+                prediction_batch = model(data, era5_info)
                 prediction_cls = (
                     torch.nn.functional.softmax(prediction_batch, dim=1)
                     .cpu()

@@ -100,19 +100,37 @@ def eval_collate_fn(batch: tuple[torch.Tensor]) -> tuple[torch.Tensor, torch.Ten
     return data, labels
 
 
-def infer_collate_fn(batch: tuple[torch.Tensor]) -> tuple[torch.Tensor, torch.Tensor]:
-    """Inference DataLoader Collate Function.
-
-    Args:
-        batch (Tuple[Tensor]): A list of tuples containing features and labels.
-
-    Returns:
-        Tuple of (x,y) concatenated into separate tensors
+def infer_collate_fn(batch):
     """
-    data = torch.stack([a[0][0] for a in batch], 0)
-    labels = [a[0][1] for a in batch]
-    filepaths = [a[1] for a in batch]
-    return (data, labels), filepaths
+    batch is a list of length B (batch size).
+    Each batch[i] is a 4-tuple:
+      ( data, era5_info, label, filepath )
+
+    We'll gather them into:
+      ((data, era5_info, label), filepaths)
+    """
+    data_list = []
+    era5_list = []
+    label_list = []
+    filepath_list = []
+
+    for item in batch:
+        # item = (data, era5_info, label, filepath)
+        data_list.append(item[0])         # shape (6, 3, 256, 256)
+        era5_list.append(item[1])         # era5_info array or list
+        label_list.append(item[2])        # label (could be a Tensor)
+        filepath_list.append(item[3])     # string
+
+    data_tensor = torch.stack(data_list, dim=0)
+
+    era5_tensor = torch.tensor(era5_list, dtype=torch.float32)
+
+    if all(isinstance(lbl, torch.Tensor) for lbl in label_list):
+        labels_tensor = torch.stack(label_list, dim=0)
+    else:
+        labels_tensor = label_list
+
+    return (data_tensor, era5_tensor, labels_tensor), filepath_list
 
 
 def create_dataloader(
